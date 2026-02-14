@@ -1,0 +1,94 @@
+# "org" ensures this Service is used with the correct Serverless Framework Access Key.
+org: nrlearnings
+# "service" is the name of this project. This will also be added to your AWS resource names.
+service: nrlearnings-srs
+
+provider:
+  name: aws
+  region: us-east-1
+  runtime: nodejs24.x
+  environment:
+    CLIENT_ID: ${ssm:/CLIENT_ID}
+    CLIENT_SECRET: ${ssm:/CLIENT_SECRET, ''}
+    USER_POOL_ID: ${ssm:/USER_POOL_ID}
+    region: us-east-1
+    USERS_TABLE: Users
+    USERS_EMAIL_INDEX: EmailIndex
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - cognito-idp:SignUp
+            - cognito-idp:ConfirmSignUp
+            - cognito-idp:InitiateAuth
+            - cognito-idp:GlobalSignOut
+            - cognito-idp:AdminDeleteUser
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:Query
+            - dynamodb:UpdateItem
+          Resource:
+            - Fn::GetAtt:
+                - UsersTable
+                - Arn
+            - Fn::Join:
+                - /
+                - - Fn::GetAtt:
+                      - UsersTable
+                      - Arn
+                  - index/*
+  # Uncomment to easily set up a custom domain. Read the docs for more details:
+  # https://www.serverless.com/framework/docs/providers/aws/guide/domains
+  # domain: api.example.com
+
+functions:
+  signUp:
+    handler: handler.signUp
+    events:
+      - httpApi:
+          path: /auth/signup
+          method: post
+  confirmEmail:
+    handler: handler.confirmEmail
+    events:
+      - httpApi:
+          path: /auth/confirm-email
+          method: post
+  signIn:
+    handler: handler.signIn
+    events:
+      - httpApi:
+          path: /auth/signin
+          method: post
+  signOut:
+    handler: handler.signOut
+    events:
+      - httpApi:
+          path: /auth/signout
+          method: post
+
+resources:
+  Resources:
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.USERS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.USERS_EMAIL_INDEX}
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
